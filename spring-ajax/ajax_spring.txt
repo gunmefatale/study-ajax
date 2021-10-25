@@ -1,0 +1,146 @@
+[ajax-spring-json]
+
+* MessageConverter
+	HTTP 프로토콜에서 메시지는 문자열을 통해 전송 됩니다.
+	MessageConvert는 HTTP 통신에서 일반 문자열이 아닌 XML 이나 JSON으로 통신하기 위해 사용됩니다.
+	주로 Ajax 통신을 할 때 사용되는데, 이 글도 Ajax로 JSON을 전달하는 범위 내에서 말씀드릴 것입니다.
+	대부분의 브라우저에는 XMLHttpRequest라는 내장 브라우저가 존재합니다.
+
+	XMLHttpReqeust는 화면이 없는 브라우저이며, 초기에는 이름 그대로 XML 방식으로 HTTP 통신만 담당했습니다.
+	브라우저 화면이 없으므로 HTML 문서를 받을 필요가 없고, 
+	따라서 통신하는데 필요한 데이터를 XML 형식으로 주고 받는 역할을 하면서 Ajax 통신이 가능하게 되었습니다.
+	그런데 브라우저에서 XML을 조작하는 것은 JS인데 굳이 XML으로 전달하여 다시 JS로 파싱 할 필요가 없음을 깨닫게 되었습니다.
+	그래서 JS 객체 형식으로 전달하는 JSON을 사용하게 되었죠.
+
+	정리하면, 브라우저 내에 XMLHttpRequest라는 내장 브라우저가 존재하여 Ajax 통신이 가능한데, 
+	XML로 데이터를 전송하는 것은 비효율적이므로 JSON으로 데이터를 주고 받는다는 것입니다.
+	이제 스프링에서 Ajax 통신을 할 때 String으로 데이터를 전달하지 않고, 
+	JSON 형태로 데이터를 전달하는 MessageConverter에 대해 알아보도록 하겠습니다.
+	
+	* @ResponseBody와 StringMessageConverter
+	우선 Ajax를 알아보기 전에 @ResponseBody 어노테이션이 무엇인지 알아야 합니다.
+	
+	#1.기본 환경 컨트롤러 세팅
+		기본세팅하고 
+		-> 브라우저 요청 
+		http://localhost:8080/spring/ajax/test.do 
+		
+		일단 결과를 얻을 수 있습니다.
+		지금까지는 return 값으로 뷰 페이지의 이름을 작성했었습니다.
+		그런데 이번에는 "ㅎㅇㅎㅇ"라는 한글을 입력했고, 메서드 위에 어노테이션으로 @ResponseBody를 명시했습니다.
+		@ResponseBody는 뷰 페이지를 응답하지 않고 return 값을 그대로 반환하겠다는 의미입니다.
+		그래서 "ㅎㅇㅎㅇ"라는 한글이 응답되었습니다.
+
+		그렇지만 결과는 ????로 한글 깨짐 
+		이를 해결하기 위해 MessageConverter를 등록해보자. 
+
+	#2. spring-servlet.xml 에<mvc:annotation-driven> 세팅 
+			
+		스키마 추가 
+		xmlns:mvc="http://www.springframework.org/schema/mvc"
+		http://www.springframework.org/schema/mvc
+		http://www.springframework.org/schema/mvc/spring-mvc-3.1.xsd
+
+		<mvc:annotation-driven>
+			<mvc:message-converters>
+				<bean class="org.springframework.http.converter.StringHttpMessageConverter">
+					<property name="supportedMediaTypes">
+						<list>
+							<value>text/html;charset=UTF-8</value>
+						</list>
+					</property>
+				</bean>
+			</mvc:message-converters>
+		</mvc:annotation-driven>
+
+		위의 설정은 String에 대해서 인코딩 타입이 UTF-8인 text/html 방식으로 응답하겠다는 것입니다.
+		-> 브라우저 다시 요청하면 한글 안깨짐
+		StringHttpMessageConverter bean을 등록했더니 UTF-8로 인코딩 되어 응답이 됩니다.
+		StringHttpMessageConverter는 응답 메시지인 문자열을 인코딩합니다.
+
+	#3. json 사용을 위해 라이브러리 추가 
+
+		<!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind -->
+		<dependency>
+  		  	<groupId>com.fasterxml.jackson.core</groupId>
+   		 	<artifactId>jackson-databind</artifactId>
+    			<version>2.10.1</version>
+		</dependency>
+
+	#4. spring-servlet.xml 에, 기존에 등록했던 StringHttpMessageConverter bean은 그대로 두고
+		새로운 MappingJackson2HttpMessageConverter bean을 추가
+
+		<bean class="org.springframework.http.converter.json.MappingJackson2HttpMessageConverter">
+			<property name="supportedMediaTypes">
+				<list>
+					<value>application/json;charset=UTF-8</value>
+				</list>
+			</property>
+		</bean>
+		이번에는 인코딩 타입이 UTF-8이며 JSON으로 응답하도록 설정했습니다.		
+		눈치 챈 분도 계시겠지만 <value>에 작성하는 이 부분은 HTTP 응답 헤더 부분 입니다.
+	
+	#5. 컨트롤러에 매핑 추가(수정)해보자 
+		Map에 데이터 넣어서 리턴 
+		브라우저 다시 실행 
+		-> {"name":"pika","age":26} 결과 나옴. 
+		.. JSON을 브라우저에 예쁘게 출력하고 싶으면 크롬 확장 프로그램에서 JSON을 검색하여 JSON viewer를 다운 받으시면 됩니다.
+
+		이와 같이 MessageConverter를 통해 java 객체를 JSON으로 응답하게 되면 Ajax 통신이 가능해집니다.
+		
+	이제 예제를 해보자 
+
+	#6. test.jsp 페이지에 태그 작성 
+		Ajax에서는 form으로 데이터를 전달하지 않기 때문에 <form>이 필요 없습니다.
+		하지만 웹 표준을 지키기 위해 추가했으며, 
+		JS 코드에서는 form에서 서버로 데이터가 전송되지 않도록 이벤트를 막을 것입니다.
+
+		
+	1) URL query string으로 데이터 전달 : serialize() 
+		#7. test.jsp 에 ajax 작성 	
+		비동기로 요청을 보낼 것이므로 기본 <form> 태그의 동작을 중지시켜야 합니다.
+		그러기 위해서는 event.preventDefault() 메서드를 호출하여 
+		기본적으로 동작하는 <form>의 submit 이벤트를 중지 시킵니다.
+		변수 queryString의 값을 보면 아래와 같이 form의 데이터들이 URL에 queryString으로 전달됩니다.
+		
+		#8. TestDTO 만들고 컨트롤러 test.do 수정 
+			insert.do 추가 
+			-> 요청 콘솔에 데이터 돌려 받는지 확인 
+ 			
+		지금까지 알아봤던 것처럼 MessageConverter 설정을 등록한 후 컨트롤러에 @ResponseBody 어노테이션을 추가하면 클라이언트로 응답이 될 것입니다.
+		TestDTO를 성공적으로 반환하게 되면, ajax의 success 함수의 매개변수 result로 전달이 됩니다.
+
+
+	2) JSON으로 전달 - serializeArray() , stringify( ) 메서드
+		#9. ajax 수정 
+		이번에는 Ajax 요청을 하기 전에 반복문을 돌면서 객체 data에 프로퍼티, 값을 추가합니다.
+		그리고 ajax() 메서드 부분에서 contentType 속성에 "application/json"을 작성해주면, JSON으로 요청을 보내겠다는 의미이고,
+		data 속성에 JSON.stringify() 메서드를 호출하면 JSON이 문자열 형태로 데이터가 전달됩니다.
+		HTTP는 문자열로 데이터를 주고 받기 때문에 JSON을 문자열로 변환시켜야 합니다.
+		참고로 stringify() 메서드를 호출한 JSON 객체는 JS 내장 객체입니다.
+
+		클라이언트에서 JSON 형태로 데이터를 전달하기 때문에 @RequestBody를 매개변수에 작성합니다.
+		이 때, @ModelAttribute를 함께 작성하면 충돌이 발생하므로 제거했으며, @ModelAttribute는 생략해도 객체를 파라미터로 받을 수 있습니다.
+
+
+		지금까지 컨트롤러에서 응답을 할 때 String으로 반환하면 뷰 페이지를 응답해주는 것으로 알고 있었습니다.
+		그런데 @ResponseBody가 있으면 문자열을 그대로 반환해주는데, 반환되는 문자열에 대해 ViewResolver가 실행될지, MessageConverter가 실행될지 어떻게 알 수 있을까요?
+
+		DispatchServlet은 handlerMethod()를 호출하여 응답으로 String , ModelAndView , Object 중 하나를 반환합니다.
+		이후 실행되는 것이 ViewResolver , MessageConverter 인데, DispatchServlet이 반환 되는 타입을 보고 어떤 처리를 할지 결정합니다.
+
+		만약 String이 반환되면 뷰 이름을 찾아서 JSP를 렌더링 하고, 뷰가 없으면 404를 반환합니다.
+		그런데 메서드 위에 @ResponseBody 어노테이션이 있다면 뷰를 찾지 않고, String을 그대로 반환합니다.
+
+		Dispatcher Servlet이 ModelAndView를 반환하면 ViewResolver가 실행됩니다.
+		그런데 @ResponseBody가 있으면 Object는 MessageConverter가 실행되어 반환됩니다.
+
+
+
+
+
+
+
+
+
+
